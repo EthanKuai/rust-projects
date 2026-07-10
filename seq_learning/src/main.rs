@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::ops::Add;
 // use thiserror::Error;
 
@@ -127,6 +128,42 @@ fn make_multiplier(factor: i32) -> impl Fn(i32) -> i32 {
     move |x| x * factor
 }
 
+fn meta_fn1(f: fn(i32) -> i32, x: i32) -> i32 {
+    f(x)
+}
+fn meta_fn2(f: impl Fn(i32) -> i32, x: i32) -> i32 {
+    f(x) // narrower than meta_fn3/4
+}
+fn meta_fn3(f: impl FnOnce(i32) -> i32, x: i32) -> i32 {
+    f(x) // broadest
+}
+fn meta_fn4(mut f: impl FnMut(i32) -> i32, x: i32) -> i32 {
+    f(x)
+}
+macro_rules! say_hello {
+    () => {
+        println!("Hello!");
+    };
+}
+
+macro_rules! vec_str {
+    ($($s:expr), *) => {
+        {
+            let mut v = Vec::new();
+            $(
+                v.push(String::from($s));
+            )*
+            v
+        }
+    };
+}
+
+macro_rules! vec_string {
+    ($($s:expr), *) => {
+        vec![$($s.to_string()), *]
+    };
+}
+
 #[allow(dead_code, unused_variables)]
 fn main() {
     println!("Hello, world!");
@@ -162,7 +199,7 @@ fn main() {
     println!("Point: {:?}", p); // Point { x: 3.0, y: 4.0 }
     let (x, y) = p.into_tuple();
     println!("Point: ({}, {})", x, y); // (4.0, 4.0)
-                                       // p is no longer valid — into_tuple consumed it
+    // p is no longer valid
 
     let zane: Student = Student::Cracked {
         age: 20,
@@ -234,8 +271,110 @@ fn main() {
 
     let s5 = s4.parse::<i32>();
     let vv: Vec<_> = (0..10).collect::<Vec<i32>>();
-    // core::iter::traits::iterator::Iterator::collect((0..10).map(|x| x * 2));
+    let v4: Vec<i32> = core::iter::Iterator::collect::<Vec<i32>>((0..10).map(|x| x * 2));
+    let i5: i32 = str::parse::<i32>("Hello, world!").unwrap_or_else(|_| 0);
 
-    // String::parse("Hello, world!").unwrap_or_else(|_| String::from("Default value"));
-    // &str::parse("Hello, world!").unwrap_or_else(|_| "Default value");
+    let sx = s3.split(',').next().unwrap_or("Default value");
+    let sy = String::from("Hello")
+        .split(',')
+        .next()
+        .unwrap_or("Default value")
+        .to_string(); // required else dangling ref
+    println!("sx: {}", sx);
+    println!("sy: {}", sy);
+
+    let v1: Vec<i32> = (0..10).collect();
+    let v2: Vec<i32> = vec![0, 1, 2, 3, 4, 5];
+    let v3: Vec<i32> = vec![3; 5];
+    println!("v1: {:?}", v1);
+    println!("v2: {:?}", v2);
+    println!("v3: {:?}", v3);
+    println!("v1 slice: {:?}", &v1[2..4]);
+
+    let mut set1: HashSet<i32> = HashSet::new();
+    let mut set2: HashSet<i32> = HashSet::new();
+    set1.insert(1);
+    set1.insert(2);
+    set2.insert(2);
+    set2.insert(3);
+
+    let union = &set1 | &set2;
+    let intersection = &set1 & &set2;
+    let tmp = &set1;
+    println!("Union: {:?}", union);
+    println!("Intersection: {:?}", intersection);
+    println!("Tmp: {:?}", tmp);
+
+    let set3 = [1, 2, 3].into_iter().collect::<HashSet<_>>();
+    let set4: HashSet<i32> = [1, 2, 3].into_iter().collect();
+    println!("Set3: {:?}", set3);
+    println!("Set4: {:?}", set4);
+
+    let map_borrow: HashMap<_, _> = set1.iter().zip(set2.iter()).collect();
+    println!("Map borrow: {:#?}", map_borrow);
+    // above println has to be before the next line, else set1 and set2 will be moved into map_own & map_borrow is invalidated
+    let map_own: HashMap<_, _> = set1.into_iter().zip(set2.into_iter()).collect();
+    println!("Map own: {:#?}", map_own);
+    // IntoIterator::into_iter
+
+    let ss: String = "hello".into();
+    println!("ss: {}", ss);
+
+    let a = vec![1, 2, 3];
+    let b = vec!["a", "b", "c"];
+    let pairs: Vec<_> = a.iter().zip(b.iter()).collect(); // [(1, "a"), (2, "b"), (3, "c")]
+    for (i, x) in pairs.iter().enumerate() {
+        println!("{}: {:?}", i, x);
+    }
+
+    let c1 = vec![1, 2, 3];
+    let c2 = vec![4, 5, 6];
+    let combined: Vec<_> = c1.into_iter().chain(c2.into_iter()).collect();
+
+    let v9: Vec<i32> = vec!["1", "x", "3"]
+        .iter()
+        .flat_map(|s| s.parse::<i32>().ok())
+        .collect();
+    let v8: Vec<Option<i32>> = vec!["1", "x", "3"]
+        .iter()
+        .map(|s| s.parse::<i32>().ok())
+        .collect();
+    println!("v9: {:?}", v9);
+    println!("v8: {:?}", v8);
+
+    println!("meta_fn1: {}", meta_fn1(|x| x + 1, 5));
+    println!("meta_fn2: {}", meta_fn2(|x| x + 1, 5));
+    println!("meta_fn3: {}", meta_fn3(|x| x + 1, 5));
+    println!("meta_fn4: {}", meta_fn4(|x| x + 1, 5));
+
+    let y = 10;
+    meta_fn1(|x| x + 1, 5); // OK
+    // meta_fn1(|x| x + y, 5); // ERR, captures y, fat ptr
+    meta_fn2(|x| x + 1, 5); // OK
+    meta_fn2(|x| x + y, 5); // OK
+
+    say_hello!();
+    let hello = stringify!(Hello, world!);
+    println!("hello: {}", hello);
+    println!("file: {}", file!());
+
+    println!("PATH: {}", env!("PATH"));
+    for var in [
+        "DOESNOTEXIST",
+        "HOME",
+        "PATH",
+        "SHELL",
+        "USER",
+        "LOGNAME",
+        "PWD",
+    ] {
+        println!(
+            "{}: {}",
+            var,
+            std::env::var(var).unwrap_or_else(|_| "Not found".to_string())
+        );
+    }
+
+    println!("vec_str: {:?}", vec_str!["a", "b", "c"]);
+    println!("vec_string: {:?}", vec_string!["a", "b", "c"]);
 }
